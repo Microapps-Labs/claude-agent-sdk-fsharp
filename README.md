@@ -1,200 +1,34 @@
 # Claude Agent SDK for F#
 
-Idiomatic F# port of the Claude Agent SDK with 100% feature parity. Embraces algebraic types, immutability, and functional pipelines.
+An F# library for working with the Claude CLI protocol, messages, hooks and local MCP tools. It uses records, discriminated unions and asynchronous sequences. It is not an official Anthropic SDK, and full parity with a particular upstream version has not been established.
 
-## Requirements
+![Actual offline MCP-tool and streaming-fixture output](docs/demo/offline.png)
 
-- .NET 8.0 or later
-- Claude CLI installed (for running examples)
+The [offline example](examples/OfflineDemo/Program.fs) calls a local tool handler and exchanges synthetic messages with a bundled fake CLI. No account, model request or real Claude process is used. See [capture notes](docs/demo/README.md).
 
-## Installation (Paket)
+## Build and run locally
 
-Add to your `paket.dependencies`:
+Install the .NET 8 SDK:
 
-```
-git https://github.com/snowbear/claude-agent-sdk-fsharp.git master build: "dotnet build src/ClaudeAgentSdk -c Release"
-```
-
-Add to your `paket.references`:
-
-```
-ClaudeAgentSdk
+```sh
+git clone https://github.com/Microapps-Labs/claude-agent-sdk-fsharp.git
+cd claude-agent-sdk-fsharp
+dotnet test tests/ClaudeAgentSdk.Tests/ClaudeAgentSdk.Tests.fsproj -c Release
+dotnet run --project examples/OfflineDemo -c Release
 ```
 
-Then run:
+On Linux, also exercise the streaming-input subprocess fixture:
 
-```bash
-paket install
+```sh
+dotnet run --project examples/OfflineDemo -c Release -- examples/OfflineDemo/fake-cli.sh
 ```
 
-> NuGet package coming soon.
+The captured run used .NET SDK 8.0.426 on Linux ARM64. All 102 tests passed, including two regressions for reading buffered stdout after a child process exits. A small input-loop refactor fixes the SDK's warning-as-error build failure without disabling that compiler check. Test fixtures still produce resumable-code warnings.
 
-## Quick Start
+## Use with Claude
 
-```fsharp
-open ClaudeAgentSdk
+Live queries require a separately installed Claude CLI, its authentication and an account able to make requests. The live examples can invoke tools and incur model usage. They were not executed for this capture. See the [API and example reference](docs/reference.md) and [examples/BasicUsage](examples/BasicUsage/) before running them.
 
-// One-shot query
-let result = Sdk.query "Hello Claude!" Options.defaults
+The source package targets net8.0. No NuGet publication or current upstream-version compatibility is claimed here. Use a project reference to this checkout when integrating from source.
 
-// Streaming with TaskSeq
-for msg in result do
-    match msg with
-    | Ok (AssistantMsg blocks) -> printfn "%A" blocks
-    | Ok (ResultMsg r) -> printfn "Done: %s" r.SessionId
-    | Error e -> printfn "Error: %A" e
-```
-
-## Build & Test
-
-```bash
-# Build SDK
-dotnet build src/ClaudeAgentSdk/ClaudeAgentSdk.fsproj
-
-# Run tests
-dotnet test tests/ClaudeAgentSdk.Tests/ClaudeAgentSdk.Tests.fsproj
-
-# Build examples
-dotnet build examples/BasicUsage/BasicUsage.fsproj
-```
-
-## Examples
-
-Run individual examples or all at once:
-
-```bash
-# Run all examples
-dotnet run --project examples/BasicUsage
-
-# Run specific example by number
-dotnet run --project examples/BasicUsage -- 01    # Quick Start
-dotnet run --project examples/BasicUsage -- 02    # Streaming Basic
-dotnet run --project examples/BasicUsage -- 03    # MCP Tools
-dotnet run --project examples/BasicUsage -- 04    # Hooks & Permissions
-dotnet run --project examples/BasicUsage -- 05    # Interactive Session
-dotnet run --project examples/BasicUsage -- 06    # Human in the Loop
-dotnet run --project examples/BasicUsage -- 07    # Events Example
-dotnet run --project examples/BasicUsage -- 08    # Max Budget
-dotnet run --project examples/BasicUsage -- 09    # Structured Output
-dotnet run --project examples/BasicUsage -- 11    # Ask User Tool
-```
-
-Aliases also work:
-
-```bash
-dotnet run --project examples/BasicUsage -- quick       # 01
-dotnet run --project examples/BasicUsage -- streaming   # 02
-dotnet run --project examples/BasicUsage -- mcp         # 03
-dotnet run --project examples/BasicUsage -- hooks       # 04
-dotnet run --project examples/BasicUsage -- interactive # 05
-dotnet run --project examples/BasicUsage -- human       # 06
-dotnet run --project examples/BasicUsage -- events      # 07
-dotnet run --project examples/BasicUsage -- budget      # 08
-dotnet run --project examples/BasicUsage -- structured  # 09
-dotnet run --project examples/BasicUsage -- ask         # 11
-```
-
-### Example Descriptions
-
-| # | Name | Description |
-|---|------|-------------|
-| 01 | QuickStart | Simplest query, one-shot response |
-| 02 | StreamingBasic | TaskSeq patterns: streaming, collecting, folding |
-| 03 | McpTools | MCP tools with auto-allow feature |
-| 04 | HooksAndPermissions | Pre/post tool hooks, blocking, permissions |
-| 05 | InteractiveSession | Recursive REPL loop (functional, no mutable state) |
-| 06 | HumanInTheLoop | Permission callbacks, user approval |
-| 07 | EventsExample | Event bus: subscribe to SDK events |
-| 08 | MaxBudget | Budget control with MaxBudgetUsd |
-| 09 | StructuredOutput | JSON Schema output format |
-| 11 | AskUserTool | Bidirectional interaction |
-
-## Key Features
-
-### MCP Tools with Auto-Allow
-
-```fsharp
-let greet = Mcp.tool "greet" "Says hello"
-    (Mcp.Schema.object' [
-        Mcp.Schema.required "name" (Mcp.Schema.string' "The name to greet")
-    ])
-    (fun input -> task {
-        match Mcp.getString "name" input with
-        | Ok name -> return Mcp.textResult (sprintf "Hello, %s!" name)
-        | Error e -> return Mcp.errorResult e
-    })
-
-let server = Mcp.createSdkServer "greetings" [greet]
-let options = {
-    Options.defaults with
-        McpServers = Map.ofList ["greetings", server]
-        // No AllowedTools needed - auto-allowed by default!
-}
-```
-
-### Event-Driven Monitoring
-
-```fsharp
-let bus = Events.createBus ()
-
-Events.subscribe (fun event ->
-    match event with
-    | MessageReceived msg -> printfn "Got: %A" msg
-    | ToolUseStarted (name, _, _) -> printfn "Tool: %s" name
-    | ErrorOccurred err -> printfn "Error: %A" err
-    | _ -> ()
-) bus |> ignore
-
-let options = { Options.defaults with Events = Some bus }
-```
-
-### Streaming Helpers
-
-```fsharp
-// Pattern 1: forEach with side effects
-let! error = Streaming.forEach (fun msg ->
-    printfn "%A" msg
-) (Client.receive ctx)
-
-// Pattern 2: Collect into list
-let! (messages, error) = Streaming.collect (Client.receive ctx)
-
-// Pattern 3: Filter messages
-let assistantOnly =
-    Client.receive ctx
-    |> Streaming.filterMessages (function AssistantMsg _ -> true | _ -> false)
-```
-
-### Type-Safe Schemas
-
-```fsharp
-Mcp.Schema.string                           // Simple
-Mcp.Schema.string' "A user's name"          // With description
-Mcp.Schema.object'' "Person data" [         // Object with description
-    Mcp.Schema.required "name" Mcp.Schema.string
-    Mcp.Schema.optional "age" Mcp.Schema.number
-]
-```
-
-## Architecture
-
-Pure functional F# with:
-- Discriminated unions for states (no OOP classes)
-- Immutable records for configuration
-- Result/Option for error handling (no exceptions)
-- TaskSeq for streaming
-- Pattern matching for parsing
-
-See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation.
-
-## Dependencies
-
-```xml
-<PackageReference Include="FSharp.Control.TaskSeq" Version="0.4.*" />
-<PackageReference Include="FsToolkit.ErrorHandling.TaskResult" Version="4.*" />
-<PackageReference Include="Thoth.Json.Net" Version="11.*" />
-```
-
-## License
-
-MIT
+[Implementation guidance](CLAUDE.md). The package metadata declares MIT; this checkout has no standalone license file.

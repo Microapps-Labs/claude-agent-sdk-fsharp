@@ -193,3 +193,26 @@ module BuildArgsTests =
         args |> should contain "--agents"
         let agentsArg = args |> List.find (fun a -> a.Contains("test-agent"))
         agentsArg |> should haveSubstring "Test agent"
+
+module ExitedProcessOutputTests =
+
+    [<Theory>]
+    [<InlineData(false)>]
+    [<InlineData(true)>]
+    let ``stdout is drained after the child exits`` (buffered: bool) = task {
+        let executable, arguments =
+            if System.OperatingSystem.IsWindows() then
+                "cmd.exe", ["/c"; "echo {\"ready\":true}"]
+            else
+                "/bin/sh", ["-c"; "printf '%s\\n' '{\"ready\":true}'"]
+        match Transport.spawn executable arguments Map.empty None with
+        | Error error -> failwithf "Fixture spawn failed: %A" error
+        | Ok connection ->
+            Assert.True(connection.Process.WaitForExit(5000), "Fixture did not exit")
+            try
+                let source = if buffered then Transport.readWithBuffer connection None else Transport.read connection
+                let! lines = FSharp.Control.TaskSeq.toListAsync source
+                Assert.Equal<string list>(["{\"ready\":true}"], lines)
+            finally
+                connection.Process.Dispose()
+    }

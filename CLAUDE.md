@@ -1,6 +1,6 @@
 # Claude Agent SDK F# Port
 
-Port `claude-agent-sdk-python` to idiomatic F#. 100% feature parity.
+Maintain the F# implementation of the Claude CLI protocol and SDK helpers. Treat upstream compatibility as version-specific and unverified until compared and tested. Do not claim full feature parity.
 
 ## Principles
 

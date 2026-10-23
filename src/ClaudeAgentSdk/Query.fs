@@ -67,6 +67,35 @@ let query (prompt: string) (options: Options) : IAsyncEnumerable<Result<Message,
                 do! Transport.close conn
 }
 
+// Keep asynchronous input enumeration in a task, outside the yielding TaskSeq.
+// This avoids the F# compiler's dynamic resumable-code fallback for a nested loop.
+let private writeInputMessages (messages: IAsyncEnumerable<string * string>) conn = task {
+    use iterator = messages.GetAsyncEnumerator()
+    let mutable more = true
+    let mutable writeError: SdkError option = None
+    while more do
+        let! hasNext = iterator.MoveNextAsync()
+        if not hasNext then
+            more <- false
+        elif writeError.IsNone then
+            let role, content = iterator.Current
+            let msgJson =
+                Encode.object [
+                    "type", Encode.string role
+                    "message", Encode.object [
+                        "role", Encode.string role
+                        "content", Encode.string content
+                    ]
+                    "session_id", Encode.string "default"
+                ]
+                |> Encode.toString 0
+            let! result = Transport.write msgJson conn
+            match result with
+            | Error e -> writeError <- Some e
+            | Ok () -> ()
+    return writeError
+}
+
 /// Execute a query with multiple input messages (streaming input mode)
 let queryStreaming
     (messages: IAsyncEnumerable<string * string>) // (role, content) pairs
@@ -85,25 +114,7 @@ let queryStreaming
             yield Error e
 
         | Ok conn ->
-            let mutable writeError: SdkError option = None
-
-            // Write all input messages
-            for (role, content) in messages do
-                if writeError.IsNone then
-                    let msgJson =
-                        Encode.object [
-                            "type", Encode.string role
-                            "message", Encode.object [
-                                "role", Encode.string role
-                                "content", Encode.string content
-                            ]
-                            "session_id", Encode.string "default"
-                        ]
-                        |> Encode.toString 0
-                    let! result = Transport.write msgJson conn
-                    match result with
-                    | Error e -> writeError <- Some e
-                    | Ok () -> ()
+            let! writeError = writeInputMessages messages conn
 
             match writeError with
             | Some e ->

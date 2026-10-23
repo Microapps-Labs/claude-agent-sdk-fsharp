@@ -299,7 +299,8 @@ let write (line: string) (conn: Connection) : Task<Result<unit, SdkError>> = tas
 /// Read lines from stdout as a TaskSeq
 let read (conn: Connection) : IAsyncEnumerable<string> = taskSeq {
     let mutable continueReading = true
-    while continueReading && not conn.Process.HasExited do
+    // A child can exit while its redirected stdout still contains unread lines.
+    while continueReading do
         let! line = conn.Stdout.ReadLineAsync()
         if line <> null then
             yield line
@@ -329,7 +330,8 @@ let readWithBuffer (conn: Connection) (maxBufferSize: int option) : IAsyncEnumer
     // let _ = stderrTask // Fire and forget
 
     let mutable continueReading = true
-    while continueReading && not conn.Process.HasExited do
+    // A child can exit while its redirected stdout still contains unread lines.
+    while continueReading do
         let! line = conn.Stdout.ReadLineAsync()
         if line <> null then
             // Optionally show raw lines for debugging (disabled by default)

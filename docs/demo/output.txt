@@ -1,0 +1,4 @@
+Local tool: Hello, Example!
+Missing name: rejected by handler
+Streaming fixture: 2 ordered inputs, 1 local result
+No Claude account or model request was used.

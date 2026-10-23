@@ -8,10 +8,10 @@
     <PackageId>ClaudeAgentSdk</PackageId>
     <Version>0.1.0</Version>
     <Authors>snowbear</Authors>
-    <Description>Idiomatic F# port of the Claude Agent SDK. Algebraic types, immutability, and functional pipelines.</Description>
+    <Description>F# helpers for Claude CLI messages, subprocess transport, hooks and MCP tools.</Description>
     <PackageTags>fsharp;claude;anthropic;ai;sdk;agent</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/snowbear/claude-agent-sdk-fsharp</RepositoryUrl>
+    <RepositoryUrl>https://github.com/Microapps-Labs/claude-agent-sdk-fsharp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
